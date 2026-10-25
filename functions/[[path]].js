@@ -105,19 +105,38 @@ const OFFLINE_STATUSES = new Set([
   502, 503, 504, 520, 521, 522, 523, 524, 530
 ]);
 
+
 function offlineResponse(request) {
+  const isApi = new URL(request.url).pathname.startsWith("/api/");
+
+  const headers = {
+    "cache-control": "no-store, no-cache, must-revalidate",
+    "retry-after": "30"
+  };
+
+  if (isApi) {
+    headers["content-type"] = "application/json; charset=utf-8";
+
+    return new Response(
+      request.method === "HEAD"
+        ? null
+        : JSON.stringify({
+            success: false,
+            error: "service_unavailable",
+            message: "BlueRank is temporarily offline. Please try again later."
+          }),
+      { status: 503, headers }
+    );
+  }
+
+  headers["content-type"] = "text/html; charset=utf-8";
+
   return new Response(
     request.method === "HEAD" ? null : OFFLINE_HTML,
-    {
-      status: 503,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store, no-cache, must-revalidate",
-        "retry-after": "30"
-      }
-    }
+    { status: 503, headers }
   );
 }
+
 
 export async function onRequest(context) {
   const incoming = new URL(context.request.url);
