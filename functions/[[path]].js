@@ -140,9 +140,24 @@ export async function onRequest(context) {
 
     const response = await fetch(upstreamRequest);
 
-    if (OFFLINE_STATUSES.has(response.status)) {
-      return offlineResponse(context.request);
-    }
+   
+if (OFFLINE_STATUSES.has(response.status)) {
+  return offlineResponse(context.request);
+}
+
+// Detect an empty response for normal browser page requests.
+const acceptsHtml = (
+  context.request.headers.get("accept") || ""
+).includes("text/html");
+
+if (acceptsHtml && response.ok) {
+  const body = await response.clone().text();
+
+  if (!body.trim()) {
+    return offlineResponse(context.request);
+  }
+}
+
 
     const outHeaders = new Headers(response.headers);
     outHeaders.delete("content-encoding");
