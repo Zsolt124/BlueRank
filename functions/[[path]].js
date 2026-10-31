@@ -154,7 +154,7 @@ export async function onRequest(context) {
     }
 
     // Require the server-side proxy secret.
-    const proxySecret = context.env.BLUERANK_PROXY_SECRET;
+    const proxySecret = context.env.PROXY_SECRET_KEY || context.env.BLUERANK_PROXY_SECRET;
 
     if (!proxySecret || proxySecret.length < 32) {
       console.error("BlueRank proxy secret is missing or invalid.");
