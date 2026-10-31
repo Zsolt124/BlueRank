@@ -105,6 +105,8 @@ const OFFLINE_STATUSES = new Set([
   502, 503, 504, 520, 521, 522, 523, 524, 530
 ]);
 
+const BACKEND_ORIGIN =
+  "https://44x180gd-5000.euw.devtunnels.ms";
 
 function offlineResponse(request) {
   const isApi = new URL(request.url).pathname.startsWith("/api/");
@@ -137,62 +139,110 @@ function offlineResponse(request) {
   );
 }
 
-
 export async function onRequest(context) {
-  const incoming = new URL(context.request.url);
-  const target = new URL(
-    incoming.pathname + incoming.search,
-    "https://44x180gd-5000.euw.devtunnels.ms"
-  );
+  const request = context.request;
 
   try {
-    const originalRequest = new Request(target, context.request);
-    const headers = new Headers(originalRequest.headers);
+    const incoming = new URL(request.url);
 
-    headers.set("host", target.host);
-    headers.set("x-tunnel-skip-anti-phishing-page", "true");
+    // Only accept requests intended for this Pages deployment.
+    if (
+      incoming.protocol !== "https:" ||
+      incoming.hostname !== "tjuepost.pages.dev"
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
 
-    const upstreamRequest = new Request(originalRequest, {
+    // Require the server-side proxy secret.
+    const proxySecret = context.env.BLUERANK_PROXY_SECRET;
+
+    if (!proxySecret || proxySecret.length < 32) {
+      console.error("BlueRank proxy secret is missing or invalid.");
+      return offlineResponse(request);
+    }
+
+    // Construct the backend URL.
+    const target = new URL(
+      incoming.pathname + incoming.search,
+      BACKEND_ORIGIN
+    );
+
+    // Preserve the incoming request method, body and headers.
+    const upstreamRequest = new Request(target.toString(), request);
+    const headers = new Headers(upstreamRequest.headers);
+
+    // Remove untrusted forwarding headers.
+    headers.delete("x-forwarded-for");
+    headers.delete("x-real-ip");
+    headers.delete("x-blue-rank-visitor-ip");
+    headers.delete("x-bluerank-visitor-ip");
+    headers.delete("x-bluerank-proxy-key");
+
+    // Supply the visitor IP from Cloudflare.
+    const visitorIP = request.headers.get("CF-Connecting-IP");
+
+    if (visitorIP) {
+      headers.set("X-BlueRank-Visitor-IP", visitorIP);
+    }
+
+    // Authenticate this proxy request to FastAPI.
+    headers.set("X-BlueRank-Proxy-Key", proxySecret);
+
+    // Required by the Dev Tunnel.
+    headers.set(
+      "x-tunnel-skip-anti-phishing-page",
+      "true"
+    );
+
+    const finalRequest = new Request(upstreamRequest, {
       headers,
       redirect: "manual"
     });
 
-    const response = await fetch(upstreamRequest);
+    const response = await fetch(finalRequest);
 
-   
-if (OFFLINE_STATUSES.has(response.status)) {
-  return offlineResponse(context.request);
-}
+    // Handle backend availability errors.
+    if (OFFLINE_STATUSES.has(response.status)) {
+      return offlineResponse(request);
+    }
 
-// Detect an empty response for normal browser page requests.
-const acceptsHtml = (
-  context.request.headers.get("accept") || ""
-).includes("text/html");
+    // Detect an empty response for browser page requests.
+    const acceptsHtml = (
+      request.headers.get("accept") || ""
+    ).includes("text/html");
 
-if (acceptsHtml && response.ok) {
-  const body = await response.clone().text();
+    if (acceptsHtml && response.ok) {
+      const body = await response.clone().text();
 
-  if (!body.trim()) {
-    return offlineResponse(context.request);
-  }
-}
+      if (!body.trim()) {
+        return offlineResponse(request);
+      }
+    }
 
-
+    // Forward response headers safely.
     const outHeaders = new Headers(response.headers);
+
     outHeaders.delete("content-encoding");
     outHeaders.delete("content-length");
+
     outHeaders.set("cache-control", "no-store");
 
+    // Do not expose internal proxy headers.
+    outHeaders.delete("x-bluerank-proxy-key");
+    outHeaders.delete("x-blue-rank-visitor-ip");
+
     return new Response(
-      context.request.method === "HEAD" ? null : response.body,
+      request.method === "HEAD" ? null : response.body,
       {
         status: response.status,
         statusText: response.statusText,
         headers: outHeaders
       }
     );
+
   } catch (error) {
-    console.error("Dev Tunnel unavailable:", error);
-    return offlineResponse(context.request);
+    console.error("BlueRank backend connection failed:", error);
+
+    return offlineResponse(request);
   }
 }
