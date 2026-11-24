@@ -106,7 +106,7 @@ const OFFLINE_STATUSES = new Set([
 ]);
 
 const BACKEND_ORIGIN =
-  "https://shrill-base-ea73.szalmazsolti8.workers.dev";
+  "https://shrill-base-ea73.mrzsolt.workers.dev";
 
 function offlineResponse(request) {
   const isApi = new URL(request.url).pathname.startsWith("/api/");
