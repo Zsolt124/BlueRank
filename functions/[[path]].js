@@ -50,10 +50,10 @@ const OFFLINE_STATUSES = new Set([
 ]);
 
 const PRODUCTION_BACKEND =
-  "https://shrill-base-ea73.szalmazsolti8.workers.dev";
+  "https://shrill-base-ea73.mrzsolt.workers.dev";
 
 const DEVELOPMENT_BACKEND =
-  "https://dev-shrill-base-ea73.szalmazsolti8.workers.dev";
+  "https://dev-shrill-base-ea73.mrzsolt.workers.dev";
 
 function offlineResponse(request) {
   const isApi = new URL(request.url).pathname.startsWith("/api/");
